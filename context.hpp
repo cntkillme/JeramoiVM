@@ -3,7 +3,7 @@
 #include "type_list.hpp"
 #include "value_list.hpp"
 
-constexpr index_t MEMORY_SIZE = 128; ///> memory allocated to the context in bytes (default: 128 bytes)
+constexpr index_t MEMORY_SIZE = 64; ///> memory allocated to the context in words (default: 64 words)
 constexpr index_t INTERRUPT_COUNT = 32; ///> number of interrupts supported (default: 32)
 
 using word = unsigned short; ///> unsigned word
@@ -44,24 +44,50 @@ struct trivial_interrupt
 	};
 };
 
-template<typename Memory = make_value_list<word, (MEMORY_SIZE/sizeof(word))>,
-	typename Registers = make_value_list<word, 16>,
+template<typename Registers = make_value_list<word, 16>,
+	typename Memory = make_value_list<word, MEMORY_SIZE>,
 	typename Interrupts = make_type_list<trivial_interrupt, INTERRUPT_COUNT>,
 	word pc = 0>
 struct context
 {
+	/**
+	 * \brief Reads a value stored in the given register.
+	 * \tparam Register the register index, between 0 and 16 exclusive.
+	 */
 	template<index_t Register>
 	static inline constexpr word read_register = Registers::template value<Register>;
 
+	/**
+	 * \brief Reads a value stored in memory at the given address.
+	 * \tparam Address the address, between 0 and MEMORY_SIZE exclusive.
+	 */
 	template<index_t Address>
 	static inline constexpr word read_memory = Memory::template value<Address>;
 
+	/**
+	 * \brief Writes a value to the given register.
+	 * \tparam Register the register index, between 0 and 16 exclusive.
+	 * \tparam Value the value to write.
+	 */
 	template<index_t Register, word Value>
-	using write_register = context<Memory, typename Registers::template replace<Register, Value>, Interrupts, pc>;
+	using write_register = context<typename Registers::template replace<Register, Value>,
+		Memory, Interrupts, pc>;
 
+	/**
+	 * \brief Writes a value to memory at the given address.
+	 * \tparam Address the address, between 0 and MEMORY_SIZE exclusive.
+	 * \tparam Value the value to write.
+	 */
 	template<index_t Address, word Value>
-	using write_memory = context<typename Memory::template replace<Address, Value>, Registers, Interrupts, pc>;
+	using write_memory = context<Registers,
+		typename Memory::template replace<Address, Value>, Interrupts, pc>;
 
+	/**
+	 * \brief Registers an interrupt handler to the given interrupt.
+	 * \tparam Interrupt the interrupt number, between 0 and INTERRUPT_COUNT exclusive.
+	 * \tparam Handler the handler.
+	 */
 	template<index_t Interrupt, typename Handler>
-	using register_interrupt = context<Memory, Registers, typename Interrupts::template replace<Interrupt, Handler>, pc>;
+	using register_interrupt = context<Registers, Memory,
+		typename Interrupts::template replace<Interrupt, Handler>, pc>;
 };
