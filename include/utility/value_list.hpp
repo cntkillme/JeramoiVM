@@ -9,37 +9,50 @@ using index_t = unsigned long long; ///< The index type, used to specify the pos
 namespace value_list_implementation
 {
 	template<index_t Index, auto Head, auto... Tail>
-	struct get : get<Index - 1, Tail...> { };
+	struct get_impl : get_impl<Index - 1, Tail...> { };
 
 	template<auto Head, auto... Tail>
-	struct get<0, Head, Tail...>
+	struct get_impl<0, Head, Tail...>
 	{
 		static constexpr auto value = Head;
 	};
 
 	template<auto... Values>
-	struct append
+	struct append_impl
 	{
 		using type = value_list<Values...>;
 	};
 
 	template<typename ValueList1, typename ValueList2>
-	struct join;
+	struct join_impl;
 
 	template<auto... Values, auto... OtherValues>
-	struct join<value_list<Values...>, value_list<OtherValues...>> : append<Values..., OtherValues...> { };
+	struct join_impl<value_list<Values...>, value_list<OtherValues...>> : append_impl<Values..., OtherValues...> { };
 
 	template<index_t Index, index_t Count, auto... Values>
-	struct subsequence
+	struct subsequence_impl
 	{
-		using type = typename join<value_list<get<Index, Values...>::value>,
-			typename subsequence<Index + 1, Count - 1, Values...>::type>::type;
+		using type = typename join_impl<value_list<get_impl<Index, Values...>::value>,
+			typename subsequence_impl<Index + 1, Count - 1, Values...>::type>::type;
 	};
 
 	template<index_t Index, auto... Values>
-	struct subsequence<Index, 0, Values...>
+	struct subsequence_impl<Index, 0, Values...>
 	{
 		using type = value_list<>;
+	};
+}
+
+namespace value_list_implementation
+{
+	template<typename Type, index_t Count, Type Default, typename ValueList>
+	struct make_value_list_impl :
+		make_value_list_impl<Type, Count - 1, Default, typename ValueList::template push_back<Default>> { };
+
+	template<typename Type, Type Default, typename ValueList>
+	struct make_value_list_impl<Type, 0, Default, ValueList>
+	{
+		using type = ValueList;
 	};
 }
 
@@ -55,19 +68,19 @@ namespace value_list_implementation
 
 		/// The value at the given Index.
 		template<index_t>
-		static inline constexpr auto value = HELPER_NOT_AVAILABLE_FOR_EMPTY_VALUE_LIST();
+		static inline constexpr auto get = HELPER_NOT_AVAILABLE_FOR_EMPTY_VALUE_LIST();
 
 		/// A value_list consisting of a subsequence of values from [Index, Index + Count).
 		template<index_t Index, index_t Count>
-		using subsequence = typename value_list_implementation::template subsequence<Index, Count>::type;
+		using subsequence = typename subsequence_impl<Index, Count, Values...>::type;
 
 		// An identical value_list except with extra values inserted at the back.
 		template<auto... OtherValues>
-		using append = typename value_list_implementation::template append<Values..., OtherValues...>::type;
+		using append = typename append_impl<Values..., OtherValues...>::type;
 
 		/// A value_list consisting of the values and the values of another value_list appended.
 		template<typename ValueList>
-		using join = typename value_list_implementation::template join<value_list<Values...>, ValueList>::type;
+		using join = typename join_impl<value_list<Values...>, ValueList>::type;
 
 		/// An identical value_list except the value at the given Index is replaced with Value.
 		template<index_t Index, auto Value>
@@ -96,18 +109,19 @@ namespace value_list_implementation
 	template<auto... Values>
 	struct populated_value_list : empty_value_list<Values...>
 	{
-		using empty_value_list<Values...>::size;
-
 		template<index_t Index>
-		static inline constexpr auto value = value_list_implementation::template get<Index, Values...>::value;
+		static inline constexpr auto get = get_impl<Index, Values...>::value;
 
 		template<index_t Index, auto Value>
-		using replace = typename subsequence<0, Index>::template push_back<Value>
-			::template join<subsequence<Index + 1, size - Index>>;
+		using replace = typename empty_value_list<Values...>::template subsequence<0, Index>
+			::template push_back<Value>::template join<typename empty_value_list<Values...>
+			::template subsequence<Index + 1, empty_value_list<Values...>::size - Index - 1>>;
 
-		using pop_front = subsequence<1, size - 1>;
+		using pop_front = typename empty_value_list<Values...>
+			::template subsequence<1, empty_value_list<Values...>::size - 1>;
 
-		using pop_back = subsequence<0, size - 1>;
+		using pop_back = typename empty_value_list<Values...>
+			::template subsequence<0, empty_value_list<Values...>::size - 1>;
 	};
 }
 
@@ -116,3 +130,7 @@ struct value_list : value_list_implementation::empty_value_list<Values...> { };
 
 template<auto Head, auto... Rest>
 struct value_list<Head, Rest...> : value_list_implementation::populated_value_list<Head, Rest...> { };
+
+template<typename Type, index_t Count, Type Default = Type()>
+using make_value_list = typename value_list_implementation
+	::template make_value_list_impl<Type, Count, Default, value_list<>>::type;

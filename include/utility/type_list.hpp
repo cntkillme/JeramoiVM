@@ -9,37 +9,50 @@ using index_t = unsigned long long; ///< The index type, used to specify the pos
 namespace type_list_implementation
 {
 	template<index_t Index, typename Head, typename... Tail>
-	struct get : get<Index - 1, Tail...> { };
+	struct get_impl : get_impl<Index - 1, Tail...> { };
 
 	template<typename Head, typename... Tail>
-	struct get<0, Head, Tail...>
+	struct get_impl<0, Head, Tail...>
 	{
 		using type = Head;
 	};
 
 	template<typename... Types>
-	struct append
+	struct append_impl
 	{
 		using type = type_list<Types...>;
 	};
 
 	template<typename TypeList1, typename TypeList2>
-	struct join;
+	struct join_impl;
 
 	template<typename... Types, typename... OtherTypes>
-	struct join<type_list<Types...>, type_list<OtherTypes...>> : append<Types..., OtherTypes...> { };
+	struct join_impl<type_list<Types...>, type_list<OtherTypes...>> : append_impl<Types..., OtherTypes...> { };
 
 	template<index_t Index, index_t Count, typename... Types>
-	struct subsequence
+	struct subsequence_impl
 	{
-		using type = typename join<type_list<typename get<Index, Types...>::type>,
-			typename subsequence<Index + 1, Count - 1, Types...>::type>::type;
+		using type = typename join_impl<type_list<typename get_impl<Index, Types...>::type>,
+			typename subsequence_impl<Index + 1, Count - 1, Types...>::type>::type;
 	};
 
 	template<index_t Index, typename... Types>
-	struct subsequence<Index, 0, Types...>
+	struct subsequence_impl<Index, 0, Types...>
 	{
 		using type = type_list<>;
+	};
+}
+
+namespace type_list_implementation
+{
+	template<typename Type, index_t Count, typename TypeList>
+	struct make_type_list_impl :
+		make_type_list_impl<Type, Count - 1, typename TypeList::template push_back<Type>> { };
+
+	template<typename Type, typename TypeList>
+	struct make_type_list_impl<Type, 0, TypeList>
+	{
+		using type = TypeList;
 	};
 }
 
@@ -55,19 +68,19 @@ namespace type_list_implementation
 
 		/// The type at the given Index.
 		template<index_t>
-		using type = HELPER_NOT_AVAILABLE_FOR_EMPTY_TYPE_LIST;
+		using get = HELPER_NOT_AVAILABLE_FOR_EMPTY_TYPE_LIST;
 
 		/// A type_list consisting of a subsequence of types from [Index, Index + Count).
 		template<index_t Index, index_t Count>
-		using subsequence = typename type_list_implementation::template subsequence<Index, Count>::type;
+		using subsequence = typename subsequence_impl<Index, Count, Types...>::type;
 
 		// An identical type_list except with extra types inserted at the back.
 		template<typename... OtherTypes>
-		using append = typename type_list_implementation::template append<Types..., OtherTypes...>::type;
+		using append = typename append_impl<Types..., OtherTypes...>::type;
 
 		/// A type_list consisting of the types and the types of another type_list appended.
 		template<typename TypeList>
-		using join = typename type_list_implementation::template join<type_list<Types...>, TypeList>::type;
+		using join = typename join_impl<type_list<Types...>, TypeList>::type;
 
 		/// An identical type_list except the type at the given Index is replaced with Type.
 		template<index_t Index, typename Type>
@@ -96,18 +109,19 @@ namespace type_list_implementation
 	template<typename... Types>
 	struct populated_type_list : empty_type_list<Types...>
 	{
-		using empty_type_list<Types...>::size;
-
 		template<index_t Index>
-		using type = typename type_list_implementation::template get<Index, Types...>::type;
+		using get = typename get_impl<Index, Types...>::type;
 
 		template<index_t Index, typename Type>
-		using replace = typename subsequence<0, Index>::template push_back<Type>
-			::template join<subsequence<Index + 1, size - Index>>;
+		using replace = typename empty_type_list<Types...>::template subsequence<0, Index>
+			::template push_back<Type>::template join<typename empty_type_list<Types...>
+			::template subsequence<Index + 1, empty_type_list<Types...>::size - Index - 1>>;
 
-		using pop_front = subsequence<1, size - 1>;
+		using pop_front = typename empty_type_list<Types...>
+			::template subsequence<1, empty_type_list<Types...>::size - 1>;
 
-		using pop_back = subsequence<0, size - 1>;
+		using pop_back = typename empty_type_list<Types...>
+			::template subsequence<0, empty_type_list<Types...>::size - 1>;
 	};
 }
 
@@ -116,3 +130,6 @@ struct type_list : type_list_implementation::empty_type_list<Types...> { };
 
 template<typename Head, typename... Rest>
 struct type_list<Head, Rest...> : type_list_implementation::populated_type_list<Head, Rest...> { };
+
+template<typename Type, index_t Count>
+using make_type_list = typename type_list_implementation::template make_type_list_impl<Type, Count, type_list<>>::type;
